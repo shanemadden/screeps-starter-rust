@@ -97,6 +97,9 @@ pub struct ShardState {
     pub colony_state: HashMap<RoomName, ColonyState>,
     // workers and their task queues (includes creeps as well as structures)
     pub worker_state: HashMap<WorkerId, WorkerState>,
+    // shared tasks and the occupancy info that controls whether they're 'saturated'
+    // or could use more workers
+    pub shared_tasks: HashMap<Task, SharedTaskState>,
     // additionally, a HashSet<WorkerRole> where we'll mark which roles
     // we have active workers for, allowing spawns to check which workers to create
     pub worker_roles: HashSet<WorkerRole>,
@@ -108,6 +111,7 @@ impl Default for ShardState {
             global_init_time: game::time(),
             colony_state: HashMap::new(),
             worker_state: HashMap::new(),
+            shared_tasks: HashMap::new(),
             worker_roles: HashSet::new(),
         }
     }

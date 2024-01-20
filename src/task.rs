@@ -10,7 +10,7 @@ use screeps::{
 use crate::{
     movement::{MovementGoal, MovementProfile},
     role::WorkerRole,
-    worker::WorkerReference,
+    worker::{WorkerId, WorkerReference},
 };
 
 mod build;
@@ -46,6 +46,15 @@ pub enum Task {
     SpawnCreep(WorkerRole),
     WaitToSpawn,
 }
+
+#[derive(Clone, Hash, Debug)]
+pub struct SharedTaskState {
+    pub workers: Vec<WorkerId>,
+    pub worker_count_limit: u8,
+    pub worker_capacity_current: u32,
+    pub worker_capacity_limit: u32,
+}
+// how to deal with finding tasks?
 
 impl Task {
     pub fn run_task(
