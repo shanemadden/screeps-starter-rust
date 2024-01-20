@@ -46,17 +46,42 @@ pub enum Task {
     SpawnCreep(WorkerRole),
     WaitToSpawn,
 }
+// maybe have a function that determines whether each task type 'reserves' its capacity?
+// then it can be taken/dropped as the task is added/removed/cleaned-up-on-death
+// or maybe even have the function return a reservation type? (simple, logistics, logistics with rate of change?)
 
-#[derive(Clone, Hash, Debug)]
-pub struct SharedTaskState {
-    pub workers: Vec<WorkerId>,
-    pub worker_count_limit: u8,
-    pub worker_capacity_current: u32,
-    pub worker_capacity_limit: u32,
-}
+// or do we just do an enum variant like we 'used to' have?
+
+// #[derive(Clone, Hash, Debug)]
+// pub struct SharedTaskState {
+//     //pub workers: Vec<WorkerId>,
+//     pub worker_count_limit: u8,
+//     pub worker_capacity_current: u32,
+//     pub worker_capacity_limit: u32,
+// }
 // how to deal with finding tasks?
 
+pub enum ReservationType {
+    // no reservations for this task
+    None,
+    // limited by total number of active workers
+    WorkerCount,
+    // limited by resource count/capacity
+    ResourceCapacity,
+}
+
 impl Task {
+    // should this be implemented on a related type that represents the point of interest/avail task?
+    // need a type where the reservation is 'associated'
+
+    // m,ight be best to have a task type to associate the things, separate struct for
+    // the queue entries and the points of interest which include it (and it can have this fn too)
+
+    // so change task to tasktype and add a task struct with a target?
+    pub fn get_reservation_type(&self) -> ReservationType {
+
+    }
+
     pub fn run_task(
         &self,
         worker: &WorkerReference,
