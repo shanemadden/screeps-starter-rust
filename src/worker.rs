@@ -284,6 +284,22 @@ pub fn run_workers(shard_state: &mut ShardState) {
                 let new_task = worker_state
                     .role
                     .find_task(&worker_ref.store(), &shard_state.worker_roles);
+                // todo I guess find_task needs to pass in the reservations too
+                // then we'll update it below..? how do we include the capacity we're reserving for resource types though
+                // especially when clearing task.. hrm
+
+                // do we need to store how much we're planning on 'using' in each task an add a fn to get the amount?
+                // kills the ability to hash it though :|
+                // hrmmm how to handle amount reservation smoothly.. need something on this end tracking the 'size' of the task
+                // so might be back to a struct that holds the size of the reservation? shit, dunno
+
+                // seems like - a struct on the creep's end with the size of the reservation, and
+                // a struct that's hashable without the reserveation size that holds the current reserved count for a given
+                // task plus target combo (split that or just leave the enum with embedded task? dunno? target needs to be point of inter)
+
+                // maybe I can use a 'back of queue' shared task on each role that tracks the fact that the creep is spawned for that role,
+                // as a way to replacwe the worker_roles hashset's necessity?  Seems like an elegant way to track the 'occupancy' of the shared role
+                // and manage has-that-spawned in a less special way?
                 match new_task.run_task(worker_ref, movement_profile) {
                     TaskResult::Complete => {
                         warn!("instantly completed new task, unexpected: {:?}", new_task)

@@ -52,8 +52,9 @@ pub enum Task {
 
 // or do we just do an enum variant like we 'used to' have?
 
+// just use a u32 for everything
 // #[derive(Clone, Hash, Debug)]
-// pub struct SharedTaskState {
+// pub struct TaskReservation {
 //     //pub workers: Vec<WorkerId>,
 //     pub worker_count_limit: u8,
 //     pub worker_capacity_current: u32,
@@ -62,8 +63,6 @@ pub enum Task {
 // how to deal with finding tasks?
 
 pub enum ReservationType {
-    // no reservations for this task
-    None,
     // limited by total number of active workers
     WorkerCount,
     // limited by resource count/capacity
@@ -78,8 +77,23 @@ impl Task {
     // the queue entries and the points of interest which include it (and it can have this fn too)
 
     // so change task to tasktype and add a task struct with a target?
-    pub fn get_reservation_type(&self) -> ReservationType {
+    pub fn get_reservation_type(&self) -> Option<ReservationType> {
+        use ReservationType::*;
 
+        match self {
+            Task::IdleUntil(_) => None,
+            Task::MoveToPosition(_, _) => None,
+            Task::HarvestEnergyUntilFull(_) => Some(WorkerCount),
+            Task::HarvestEnergyForever(_) => Some(WorkerCount),
+            Task::Build(_) => Some(ResourceCapacity),
+            Task::Repair(_) => Some(ResourceCapacity),
+            Task::Upgrade(_) => Some(WorkerCount),
+            Task::TakeFromResource(_) => Some(ResourceCapacity),
+            Task::TakeFromStructure(_, _) => Some(ResourceCapacity),
+            Task::DeliverToStructure(_, _) => Some(ResourceCapacity),
+            Task::SpawnCreep(_) => Some(WorkerCount),
+            Task::WaitToSpawn => None,
+        }
     }
 
     pub fn run_task(
