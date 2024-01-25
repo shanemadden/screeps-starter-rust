@@ -69,6 +69,14 @@ pub enum ReservationType {
     ResourceCapacity,
 }
 
+// sooooo
+// we need to split this at least a little
+// entry on the creep queue should have the task (plus maybe the target) and an optional
+// size of the reservation if there is one, so if there's a reservation we know to reduce it
+// then the hashmap for tracking hte actual reservation size (or maybe just on the point of interest)
+// .. then I need to figure out whether to split the target off of here. maybe the reservation key should be tuple
+// of task and target?
+
 impl Task {
     // should this be implemented on a related type that represents the point of interest/avail task?
     // need a type where the reservation is 'associated'
