@@ -15,7 +15,7 @@ use screeps::{
 use crate::{
     movement::{MovementGoal, MovementProfile, PathState},
     role::*,
-    task::{Task, TaskResult},
+    task::{Task, TaskResult, TaskQueueEntry},
     ShardState,
 };
 
@@ -84,7 +84,7 @@ impl WorkerReference {
 pub trait Worker {
     /// to be called for the worker when it has no work to do,
     /// so that it can find another task (even if it's just to idle)
-    fn find_task(&self, store: &Store, worker_roles: &HashSet<WorkerRole>) -> Task;
+    fn find_task(&self, store: &Store, worker_roles: &HashSet<WorkerRole>) -> TaskQueueEntry;
 
     /// gets the desired body to spawn a creep for a worker role
     fn get_body_for_creep(&self, spawn: &StructureSpawn) -> Vec<Part>;
@@ -103,7 +103,7 @@ pub trait Worker {
 #[derive(Debug, Clone)]
 pub struct WorkerState {
     pub role: WorkerRole,
-    pub task_queue: VecDeque<Task>,
+    pub task_queue: VecDeque<TaskQueueEntry>,
     pub worker_reference: Option<WorkerReference>,
     pub movement_goal: Option<MovementGoal>,
     pub path_state: Option<PathState>,
@@ -113,7 +113,7 @@ impl WorkerState {
     pub fn new_with_role_and_reference(
         role: WorkerRole,
         worker_reference: WorkerReference,
-        task_queue: VecDeque<Task>,
+        task_queue: VecDeque<TaskQueueEntry>,
     ) -> WorkerState {
         WorkerState {
             role,

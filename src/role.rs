@@ -9,7 +9,7 @@ use screeps::{
     objects::{Store, StructureSpawn},
 };
 
-use crate::{task::Task, worker::Worker};
+use crate::{task::{Task, TaskQueueEntry}, worker::Worker};
 
 mod builder;
 mod hauler;
@@ -28,9 +28,9 @@ pub use self::{
 pub struct Invalid {}
 
 impl Worker for Invalid {
-    fn find_task(&self, _store: &Store, _worker_roles: &HashSet<WorkerRole>) -> Task {
+    fn find_task(&self, _store: &Store, _worker_roles: &HashSet<WorkerRole>) -> TaskQueueEntry {
         // broken creep, name didn't parse! doom creep to idle until the end of time
-        Task::IdleUntil(u32::MAX)
+        TaskQueueEntry::new_unreserved(Task::IdleUntil(u32::MAX))
     }
 
     fn get_body_for_creep(&self, _spawn: &StructureSpawn) -> Vec<Part> {

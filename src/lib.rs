@@ -14,7 +14,6 @@ mod task;
 mod worker;
 
 use self::{
-    task::Task,
     role::WorkerRole,
     task::Task,
     worker::{WorkerId, WorkerState},

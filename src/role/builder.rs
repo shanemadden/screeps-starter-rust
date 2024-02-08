@@ -11,7 +11,7 @@ use screeps::{
     prelude::*,
 };
 
-use crate::{constants::*, role::WorkerRole, task::Task, worker::Worker};
+use crate::{constants::*, role::WorkerRole, task::{Task, TaskQueueEntry}, worker::Worker};
 
 #[derive(Eq, PartialEq, Hash, Debug, Copy, Clone, Serialize, Deserialize)]
 pub struct Builder {
@@ -22,7 +22,7 @@ pub struct Builder {
 }
 
 impl Worker for Builder {
-    fn find_task(&self, store: &Store, _worker_roles: &HashSet<WorkerRole>) -> Task {
+    fn find_task(&self, store: &Store, _worker_roles: &HashSet<WorkerRole>) -> TaskQueueEntry {
         match game::rooms().get(self.home_room) {
             Some(room) => {
                 if store.get_used_capacity(Some(ResourceType::Energy)) > 0 {
@@ -33,7 +33,7 @@ impl Worker for Builder {
             }
             None => {
                 warn!("couldn't see room for task find, must be an orphan");
-                Task::IdleUntil(u32::MAX)
+                TaskQueueEntry::new_unreserved(Task::IdleUntil(u32::MAX))
             }
         }
     }
@@ -44,7 +44,7 @@ impl Worker for Builder {
     }
 }
 
-fn find_build_or_repair_task(room: &Room, repair_watermark: u32) -> Task {
+fn find_build_or_repair_task(room: &Room, repair_watermark: u32) -> TaskQueueEntry {
     // look for repair tasks first
     // note that we're using STRUCTURES instead of MY_STRUCTURES
     // so we can catch roads, containers, and walls
@@ -78,7 +78,7 @@ fn find_build_or_repair_task(room: &Room, repair_watermark: u32) -> Task {
     Task::IdleUntil(game::time() + NO_TASK_IDLE_TICKS)
 }
 
-fn find_energy_or_source(room: &Room) -> Task {
+fn find_energy_or_source(room: &Room) -> TaskQueueEntry {
     // check for energy on the ground of sufficient quantity to care about
     for resource in room.find(find::DROPPED_RESOURCES, None) {
         if resource.resource_type() == ResourceType::Energy
