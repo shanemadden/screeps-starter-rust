@@ -5,7 +5,12 @@ const MODULE_NAME = "screeps_starter_rust_bg";
 // TextEncoder/Decoder polyfill for UTF-8 conversion
 import 'fastestsmallesttextencoderdecoder-encodeinto/EncoderDecoderTogether.min.js';
 
+import './client_scripts.js';
 import * as screeps_bot from '../pkg/screeps_starter_rust.js';
+
+// glue functions for client scripts
+global.update_selected_object = screeps_bot.update_selected_object;
+global.right_click_position = screeps_bot.right_click_position;
 
 // This provides the function `console.error` that wasm_bindgen sometimes expects to exist,
 // especially with type checks in debug mode. An alternative is to have this be `function () {}`
@@ -31,6 +36,10 @@ function console_error() {
 // track whether running wasm loop for each tick completes, to detect errors or aborted execution
 let running = false;
 
+// replacement for the default Memory object which can be written into by game functions; will be
+// forgotten instead of persisted on global reset, and RawMemory used from within wasm
+let js_memory = {};
+
 function main_loop() {
     if (running) {
         // we've had an error on the last tick; skip execution during the current tick, asking to
@@ -38,13 +47,10 @@ function main_loop() {
         // workaround for https://github.com/rustwasm/wasm-bindgen/issues/3130
         Game.cpu.halt();
     } else {
-        // Replace the Memory object (which gets populated into our global each tick) with an empty
-        // object, so that accesses to it from within the driver that we can't prevent (such as
-        // when a creep is spawned) won't trigger an attempt to parse RawMemory. Replace the object
-        // with one unattached to memory magic - game functions will access the `Memory` object and
-        // can throw data in here, and it'll go away at the end of tick.
+        // Replace the Memory object (which gets populated into our global each tick) with our local
+        // heap object, so that js won't try to parse RawMemory.
         delete global.Memory;
-        global.Memory = {};
+        global.Memory = js_memory;
         // also override the console.error, if we're in dev mode bindgen might use it (and it, too,
         // gets overwritten every tick)
         console.error = console_error;
