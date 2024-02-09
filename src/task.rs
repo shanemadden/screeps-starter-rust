@@ -1,5 +1,3 @@
-use std::collections::{VecDeque, HashMap};
-
 use serde::{Deserialize, Serialize};
 
 use screeps::{
@@ -10,10 +8,9 @@ use screeps::{
 };
 
 use crate::{
-    ShardState,
     movement::{MovementGoal, MovementProfile},
     role::WorkerRole,
-    worker::{WorkerId, WorkerReference},
+    worker::WorkerReference,
 };
 
 mod build;
@@ -41,8 +38,6 @@ pub enum TaskResult {
 //     Logistics(TaskTarget, u32, ResourceType),
 // }
 
-
-
 #[derive(Eq, PartialEq, Hash, Debug, Copy, Clone, Serialize, Deserialize)]
 pub enum Task {
     // no reservation
@@ -61,7 +56,6 @@ pub enum Task {
     TakeFromStructure(ObjectId<Structure>, ResourceType),
     DeliverToStructure(ObjectId<Structure>, ResourceType),
 }
-
 
 // maybe have a function that determines whether each task type 'reserves' its capacity?
 // then it can be taken/dropped as the task is added/removed/cleaned-up-on-death
@@ -110,10 +104,7 @@ impl TaskQueueEntry {
         }
     }
 
-    pub fn new(
-        task: Task,
-        reservation_amount: u32,
-    ) -> TaskQueueEntry {
+    pub fn new(task: Task, reservation_amount: u32) -> TaskQueueEntry {
         if reservation_amount > 0 {
             // add reservation
         }

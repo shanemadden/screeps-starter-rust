@@ -44,7 +44,9 @@ impl Worker for Spawn {
             }
 
             // we only want starter creeps, idle
-            return TaskQueueEntry::new_unreserved(Task::IdleUntil(game::time() + NO_TASK_IDLE_TICKS));
+            return TaskQueueEntry::new_unreserved(Task::IdleUntil(
+                game::time() + NO_TASK_IDLE_TICKS,
+            ));
         }
 
         // crap - how we gonna get a watermark from colony state from here (or update it)

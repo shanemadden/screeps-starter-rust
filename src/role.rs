@@ -9,7 +9,10 @@ use screeps::{
     objects::{Store, StructureSpawn},
 };
 
-use crate::{task::{Task, TaskQueueEntry}, worker::Worker};
+use crate::{
+    task::{Task, TaskQueueEntry},
+    worker::Worker,
+};
 
 mod builder;
 mod hauler;

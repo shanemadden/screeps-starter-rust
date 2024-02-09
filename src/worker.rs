@@ -15,7 +15,7 @@ use screeps::{
 use crate::{
     movement::{MovementGoal, MovementProfile, PathState},
     role::*,
-    task::{Task, TaskResult, TaskQueueEntry},
+    task::{Task, TaskQueueEntry, TaskResult},
     ShardState,
 };
 

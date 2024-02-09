@@ -11,7 +11,12 @@ use screeps::{
     prelude::*,
 };
 
-use crate::{constants::*, role::WorkerRole, task::{Task, TaskQueueEntry}, worker::Worker};
+use crate::{
+    constants::*,
+    role::WorkerRole,
+    task::{Task, TaskQueueEntry},
+    worker::Worker,
+};
 
 #[derive(Eq, PartialEq, Hash, Debug, Copy, Clone, Serialize, Deserialize)]
 pub struct Builder {
@@ -25,12 +30,23 @@ impl Worker for Builder {
     fn find_task(&self, store: &Store, _worker_roles: &HashSet<WorkerRole>) -> TaskQueueEntry {
         match game::rooms().get(self.home_room) {
             Some(room) => {
-                let energy_amount = store.get_used_capacity(Some(ResourceType::Energy)).try_into().unwrap_or(0);
+                let energy_amount = store
+                    .get_used_capacity(Some(ResourceType::Energy))
+                    .try_into()
+                    .unwrap_or(0);
                 if energy_amount > 0 {
                     find_build_or_repair_task(&room, self.repair_watermark, energy_amount)
                 } else {
-                    let energy_capacity = store.get_free_capacity(Some(ResourceType::Energy)).try_into().unwrap_or(0);
-                    find_energy_or_source(&room, energy_capacity)
+                    let energy_capacity = store
+                        .get_free_capacity(Some(ResourceType::Energy))
+                        .try_into()
+                        .unwrap_or(0);
+                    if energy_capacity > 0 {
+                        find_energy_or_source(&room, energy_capacity)
+                    } else {
+                        warn!("no energy capacity!");
+                        TaskQueueEntry::new_unreserved(Task::IdleUntil(u32::MAX))
+                    }
                 }
             }
             None => {
@@ -46,7 +62,11 @@ impl Worker for Builder {
     }
 }
 
-fn find_build_or_repair_task(room: &Room, repair_watermark: u32, energy_amount: u32) -> TaskQueueEntry {
+fn find_build_or_repair_task(
+    room: &Room,
+    repair_watermark: u32,
+    energy_amount: u32,
+) -> TaskQueueEntry {
     // look for repair tasks first
     // note that we're using STRUCTURES instead of MY_STRUCTURES
     // so we can catch roads, containers, and walls
@@ -74,7 +94,10 @@ fn find_build_or_repair_task(room: &Room, repair_watermark: u32, energy_amount: 
         .next()
     {
         // we can unwrap this id because we know the room the site is in must be visible
-        return TaskQueueEntry::new(Task::Build(construction_site.try_id().unwrap()), energy_amount);
+        return TaskQueueEntry::new(
+            Task::Build(construction_site.try_id().unwrap()),
+            energy_amount,
+        );
     }
 
     TaskQueueEntry::new_unreserved(Task::IdleUntil(game::time() + NO_TASK_IDLE_TICKS))
@@ -85,7 +108,7 @@ fn find_energy_or_source(room: &Room, energy_capacity: u32) -> TaskQueueEntry {
     for resource in room.find(find::DROPPED_RESOURCES, None) {
         let resource_amount = resource.amount();
         if resource.resource_type() == ResourceType::Energy
-            && resource.amount() >= BUILDER_ENERGY_PICKUP_THRESHOLD
+            && resource_amount >= BUILDER_ENERGY_PICKUP_THRESHOLD
         {
             let reserve_amount = std::cmp::min(resource_amount, energy_capacity);
             return TaskQueueEntry::new(Task::TakeFromResource(resource.id()), reserve_amount);
@@ -108,7 +131,10 @@ fn find_energy_or_source(room: &Room, energy_capacity: u32) -> TaskQueueEntry {
         let energy_amount = store.get_used_capacity(Some(ResourceType::Energy));
         if energy_amount >= BUILDER_ENERGY_WITHDRAW_THRESHOLD {
             let reserve_amount = std::cmp::min(energy_amount, energy_capacity);
-            return TaskQueueEntry::new(Task::TakeFromStructure(structure.as_structure().id(), ResourceType::Energy), reserve_amount);
+            return TaskQueueEntry::new(
+                Task::TakeFromStructure(structure.as_structure().id(), ResourceType::Energy),
+                reserve_amount,
+            );
         }
     }
 

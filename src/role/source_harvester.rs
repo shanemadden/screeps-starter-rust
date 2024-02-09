@@ -9,7 +9,11 @@ use screeps::{
     prelude::*,
 };
 
-use crate::{role::WorkerRole, task::{Task, TaskQueueEntry}, worker::Worker};
+use crate::{
+    role::WorkerRole,
+    task::{Task, TaskQueueEntry},
+    worker::Worker,
+};
 
 #[derive(Eq, PartialEq, Hash, Debug, Copy, Clone, Serialize, Deserialize)]
 pub struct SourceHarvester {
@@ -22,7 +26,9 @@ impl Worker for SourceHarvester {
         match self.source_position.look_for(look::SOURCES) {
             Ok(sources) => match sources.first() {
                 Some(source) => TaskQueueEntry::new(Task::HarvestEnergyForever(source.id()), 1),
-                None => TaskQueueEntry::new_unreserved(Task::MoveToPosition(self.source_position, 1)),
+                None => {
+                    TaskQueueEntry::new_unreserved(Task::MoveToPosition(self.source_position, 1))
+                }
             },
             Err(_) => TaskQueueEntry::new_unreserved(Task::MoveToPosition(self.source_position, 1)),
         }

@@ -15,7 +15,7 @@ mod worker;
 
 use self::{
     role::WorkerRole,
-    task::Task,
+    task::{Task, TaskQueueEntry},
     worker::{WorkerId, WorkerState},
 };
 
@@ -155,7 +155,11 @@ pub fn right_click_position(
         shard_state
             .worker_state
             .entry(WorkerId::Creep(id_raw.into()))
-            .and_modify(|state| state.task_queue.push_front(Task::MoveToPosition(pos, 0)));
+            .and_modify(|state| {
+                state
+                    .task_queue
+                    .push_front(TaskQueueEntry::new_unreserved(Task::MoveToPosition(pos, 0)))
+            });
     }
 }
 
