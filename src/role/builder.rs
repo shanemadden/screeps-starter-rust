@@ -25,10 +25,12 @@ impl Worker for Builder {
     fn find_task(&self, store: &Store, _worker_roles: &HashSet<WorkerRole>) -> TaskQueueEntry {
         match game::rooms().get(self.home_room) {
             Some(room) => {
-                if store.get_used_capacity(Some(ResourceType::Energy)) > 0 {
-                    find_build_or_repair_task(&room, self.repair_watermark)
+                let energy_amount = store.get_used_capacity(Some(ResourceType::Energy)).try_into().unwrap_or(0);
+                if energy_amount > 0 {
+                    find_build_or_repair_task(&room, self.repair_watermark, energy_amount)
                 } else {
-                    find_energy_or_source(&room)
+                    let energy_capacity = store.get_free_capacity(Some(ResourceType::Energy)).try_into().unwrap_or(0);
+                    find_energy_or_source(&room, energy_capacity)
                 }
             }
             None => {
@@ -44,7 +46,7 @@ impl Worker for Builder {
     }
 }
 
-fn find_build_or_repair_task(room: &Room, repair_watermark: u32) -> TaskQueueEntry {
+fn find_build_or_repair_task(room: &Room, repair_watermark: u32, energy_amount: u32) -> TaskQueueEntry {
     // look for repair tasks first
     // note that we're using STRUCTURES instead of MY_STRUCTURES
     // so we can catch roads, containers, and walls
@@ -60,7 +62,7 @@ fn find_build_or_repair_task(room: &Room, repair_watermark: u32) -> TaskQueueEnt
             // if the hits are below our 'watermark' to repair to
             // as well as less than half of this struture's max, repair!
             if hits < repair_watermark && hits * 2 < hits_max {
-                return Task::Repair(structure.id());
+                return TaskQueueEntry::new(Task::Repair(structure.id()), energy_amount);
             }
         }
     }
@@ -72,19 +74,21 @@ fn find_build_or_repair_task(room: &Room, repair_watermark: u32) -> TaskQueueEnt
         .next()
     {
         // we can unwrap this id because we know the room the site is in must be visible
-        return Task::Build(construction_site.try_id().unwrap());
+        return TaskQueueEntry::new(Task::Build(construction_site.try_id().unwrap()), energy_amount);
     }
 
-    Task::IdleUntil(game::time() + NO_TASK_IDLE_TICKS)
+    TaskQueueEntry::new_unreserved(Task::IdleUntil(game::time() + NO_TASK_IDLE_TICKS))
 }
 
-fn find_energy_or_source(room: &Room) -> TaskQueueEntry {
+fn find_energy_or_source(room: &Room, energy_capacity: u32) -> TaskQueueEntry {
     // check for energy on the ground of sufficient quantity to care about
     for resource in room.find(find::DROPPED_RESOURCES, None) {
+        let resource_amount = resource.amount();
         if resource.resource_type() == ResourceType::Energy
             && resource.amount() >= BUILDER_ENERGY_PICKUP_THRESHOLD
         {
-            return Task::TakeFromResource(resource.id());
+            let reserve_amount = std::cmp::min(resource_amount, energy_capacity);
+            return TaskQueueEntry::new(Task::TakeFromResource(resource.id()), reserve_amount);
         }
     }
 
@@ -101,16 +105,17 @@ fn find_energy_or_source(room: &Room) -> TaskQueueEntry {
             }
         };
 
-        if store.get_used_capacity(Some(ResourceType::Energy)) >= BUILDER_ENERGY_WITHDRAW_THRESHOLD
-        {
-            return Task::TakeFromStructure(structure.as_structure().id(), ResourceType::Energy);
+        let energy_amount = store.get_used_capacity(Some(ResourceType::Energy));
+        if energy_amount >= BUILDER_ENERGY_WITHDRAW_THRESHOLD {
+            let reserve_amount = std::cmp::min(energy_amount, energy_capacity);
+            return TaskQueueEntry::new(Task::TakeFromStructure(structure.as_structure().id(), ResourceType::Energy), reserve_amount);
         }
     }
 
     // look for sources with energy we can harvest as a last resort
     if let Some(source) = room.find(find::SOURCES_ACTIVE, None).into_iter().next() {
-        return Task::HarvestEnergyUntilFull(source.id());
+        return TaskQueueEntry::new(Task::HarvestEnergyUntilFull(source.id()), 1);
     }
 
-    Task::IdleUntil(game::time() + NO_TASK_IDLE_TICKS)
+    TaskQueueEntry::new_unreserved(Task::IdleUntil(game::time() + NO_TASK_IDLE_TICKS))
 }

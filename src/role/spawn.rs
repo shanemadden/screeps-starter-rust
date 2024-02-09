@@ -18,7 +18,7 @@ pub struct Spawn {
 }
 
 impl Worker for Spawn {
-    fn find_task(&self, _store: &Store, worker_roles: &HashSet<WorkerRole>) -> Task {
+    fn find_task(&self, _store: &Store, worker_roles: &HashSet<WorkerRole>) -> TaskQueueEntry {
         // for each role variant we want a creep occupying, check
         // if a worker exists; if not, that's the creep we'll pick to spawn next
 
@@ -39,12 +39,12 @@ impl Worker for Spawn {
                     id: i,
                 });
                 if !worker_roles.contains(&startup_role) {
-                    return Task::SpawnCreep(startup_role);
+                    return TaskQueueEntry::new_unreserved(Task::SpawnCreep(startup_role));
                 }
             }
 
             // we only want starter creeps, idle
-            return Task::IdleUntil(game::time() + NO_TASK_IDLE_TICKS);
+            return TaskQueueEntry::new_unreserved(Task::IdleUntil(game::time() + NO_TASK_IDLE_TICKS));
         }
 
         // crap - how we gonna get a watermark from colony state from here (or update it)
@@ -68,7 +68,7 @@ impl Worker for Spawn {
                 source_position: source.pos(),
             });
             if !worker_roles.contains(&harvester_role) {
-                return Task::SpawnCreep(harvester_role);
+                return TaskQueueEntry::new_unreserved(Task::SpawnCreep(harvester_role));
             }
         }
 
@@ -103,7 +103,7 @@ impl Worker for Spawn {
                 repair_watermark,
             });
             if !worker_roles.contains(&builder_role) {
-                return Task::SpawnCreep(builder_role);
+                return TaskQueueEntry::new_unreserved(Task::SpawnCreep(builder_role));
             }
         }
 
@@ -114,7 +114,7 @@ impl Worker for Spawn {
                 id: i,
             });
             if !worker_roles.contains(&hauler_role) {
-                return Task::SpawnCreep(hauler_role);
+                return TaskQueueEntry::new_unreserved(Task::SpawnCreep(hauler_role));
             }
         }
 
@@ -125,12 +125,12 @@ impl Worker for Spawn {
                 id: i,
             });
             if !worker_roles.contains(&upgrader_role) {
-                return Task::SpawnCreep(upgrader_role);
+                return TaskQueueEntry::new_unreserved(Task::SpawnCreep(upgrader_role));
             }
         }
 
         // last resort, idle
-        Task::IdleUntil(game::time() + NO_TASK_IDLE_TICKS)
+        TaskQueueEntry::new_unreserved(Task::IdleUntil(game::time() + NO_TASK_IDLE_TICKS))
     }
 
     fn get_body_for_creep(&self, _spawn: &StructureSpawn) -> Vec<Part> {

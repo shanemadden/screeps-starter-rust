@@ -12,7 +12,7 @@ use screeps::{
 };
 
 use crate::{
-    constants::*, movement::MovementProfile, role::WorkerRole, task::Task, worker::Worker,
+    constants::*, movement::MovementProfile, role::WorkerRole, task::{Task, TaskQueueEntry}, worker::Worker,
 };
 
 #[derive(Eq, PartialEq, Hash, Debug, Copy, Clone, Serialize, Deserialize)]
@@ -24,7 +24,7 @@ pub struct Startup {
 }
 
 impl Worker for Startup {
-    fn find_task(&self, store: &Store, _worker_roles: &HashSet<WorkerRole>) -> Task {
+    fn find_task(&self, store: &Store, _worker_roles: &HashSet<WorkerRole>) -> TaskQueueEntry {
         match game::rooms().get(self.home_room) {
             Some(room) => {
                 if store.get_used_capacity(Some(ResourceType::Energy)) > 0 {
@@ -35,7 +35,7 @@ impl Worker for Startup {
             }
             None => {
                 warn!("couldn't see room for task find, must be an orphan");
-                Task::IdleUntil(u32::MAX)
+                TaskQueueEntry::new_unreserved(Task::IdleUntil(u32::MAX))
             }
         }
     }
@@ -50,7 +50,7 @@ impl Worker for Startup {
     }
 }
 
-fn find_startup_task(room: &Room) -> Task {
+fn find_startup_task(room: &Room) -> TaskQueueEntry {
     // look for supply tasks a spawn or extension
     for structure in room.find(find::STRUCTURES, None) {
         let (store, structure) = match structure {
@@ -60,8 +60,8 @@ fn find_startup_task(room: &Room) -> Task {
             StructureObject::StructureExtension(ref o) => (o.store(), structure),
             _ => {
                 // no need to deliver to any other structures with these little ones
-                continue;
-            }
+                continue
+            },
         };
 
         if store.get_free_capacity(Some(ResourceType::Energy)) > 0 {
@@ -101,13 +101,13 @@ fn find_startup_task(room: &Room) -> Task {
 
     // finally, upgrade
     if let Some(controller) = room.controller() {
-        return Task::Upgrade(controller.id());
+        return Task::Upgrade(controller.id())
     }
 
-    Task::IdleUntil(game::time() + NO_TASK_IDLE_TICKS)
+    TaskQueueEntry::new_unreserved(Task::IdleUntil(game::time() + NO_TASK_IDLE_TICKS))
 }
 
-fn find_energy_or_source(room: &Room) -> Task {
+fn find_energy_or_source(room: &Room) -> TaskQueueEntry {
     // check for energy on the ground of sufficient quantity to care about
     for resource in room.find(find::DROPPED_RESOURCES, None) {
         if resource.resource_type() == ResourceType::Energy
