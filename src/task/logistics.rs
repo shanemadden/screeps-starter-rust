@@ -53,7 +53,7 @@ pub fn take_from_resource(
 
 pub fn take_from_structure(
     worker: &WorkerReference,
-    target: ObjectId<Structure>,
+    target: &ObjectId<Structure>,
     resource_type: ResourceType,
     _movement_profile: MovementProfile,
 ) -> TaskResult {
@@ -99,7 +99,7 @@ pub fn take_from_structure(
 
 pub fn deliver_to_structure(
     worker: &WorkerReference,
-    target: ObjectId<Structure>,
+    target: &ObjectId<Structure>,
     resource_type: ResourceType,
     movement_profile: MovementProfile,
 ) -> TaskResult {

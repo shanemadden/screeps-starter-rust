@@ -148,7 +148,7 @@ pub fn scan_and_register_creeps(shard_state: &mut ShardState) {
                     Ok(role) => {
                         let task_queue = if creep.spawning() {
                             let mut queue = VecDeque::new();
-                            queue.push_front(Task::WaitToSpawn);
+                            queue.push_front(TaskQueueEntry::new_unreserved(Task::WaitToSpawn));
                             queue
                         } else {
                             VecDeque::new()
