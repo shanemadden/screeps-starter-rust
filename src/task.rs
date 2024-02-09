@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{hash_map, HashMap};
 
 use serde::{Deserialize, Serialize};
 
@@ -114,11 +114,23 @@ impl TaskQueueEntry {
         if reservation_amount > 0 {
             task_reservations
                 .entry(task)
-                .and_modify(|r| *r += reservation_amount);
+                .and_modify(|r| *r = r.saturating_add(reservation_amount))
+                .or_insert(reservation_amount);
         }
         TaskQueueEntry {
             task,
             reservation_amount,
+        }
+    }
+
+    pub fn remove_reservation(&self, task_reservations: &mut HashMap<Task, u32>) {
+        let entry = task_reservations
+            .entry(self.task)
+            .and_modify(|r| *r = r.saturating_sub(self.reservation_amount));
+        if let hash_map::Entry::Occupied(o) = entry {
+            if *o.get() == 0 {
+                o.remove();
+            }
         }
     }
 
