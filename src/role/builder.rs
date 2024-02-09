@@ -30,10 +30,7 @@ impl Worker for Builder {
     fn find_task(&self, store: &Store, _worker_roles: &HashSet<WorkerRole>) -> TaskQueueEntry {
         match game::rooms().get(self.home_room) {
             Some(room) => {
-                let energy_amount = store
-                    .get_used_capacity(Some(ResourceType::Energy))
-                    .try_into()
-                    .unwrap_or(0);
+                let energy_amount = store.get_used_capacity(Some(ResourceType::Energy));
                 if energy_amount > 0 {
                     find_build_or_repair_task(&room, self.repair_watermark, energy_amount)
                 } else {

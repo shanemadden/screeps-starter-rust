@@ -134,7 +134,7 @@ impl TaskQueueEntry {
                 } else {
                     TaskResult::MoveMeTo(MovementGoal {
                         pos: position,
-                        range: range,
+                        range,
                         profile: movement_profile,
                         avoid_creeps: false,
                     })
