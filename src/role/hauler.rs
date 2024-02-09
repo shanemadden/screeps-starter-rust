@@ -10,7 +10,7 @@ use screeps::{
     prelude::*,
 };
 
-use crate::{constants::*, game, role::WorkerRole, task::Task, worker::Worker};
+use crate::{constants::*, game, role::WorkerRole, task::{TaskQueueEntry, Task}, worker::Worker};
 
 #[derive(Eq, PartialEq, Hash, Debug, Copy, Clone, Serialize, Deserialize)]
 pub struct Hauler {
@@ -21,18 +21,20 @@ pub struct Hauler {
 }
 
 impl Worker for Hauler {
-    fn find_task(&self, store: &Store, _worker_roles: &HashSet<WorkerRole>) -> Task {
+    fn find_task(&self, store: &Store, _worker_roles: &HashSet<WorkerRole>) -> TaskQueueEntry {
         match game::rooms().get(self.home_room) {
             Some(room) => {
-                if store.get_used_capacity(Some(ResourceType::Energy)) > 0 {
-                    find_delivery_target(&room)
+                let energy_amount = store.get_used_capacity(Some(ResourceType::Energy)).try_into().unwrap_or(0);
+                if energy_amount > 0 {
+                    find_delivery_target(&room, energy_amount)
                 } else {
-                    find_energy(&room)
+                    let energy_capacity = store.get_free_capacity(Some(ResourceType::Energy)).try_into().unwrap_or(0);
+                    find_energy(&room, energy_capacity)
                 }
             }
             None => {
                 warn!("couldn't see room for task find, must be an orphan");
-                Task::IdleUntil(u32::MAX)
+                TaskQueueEntry::new_unreserved(Task::IdleUntil(u32::MAX))
             }
         }
     }
@@ -52,13 +54,15 @@ impl Worker for Hauler {
     }
 }
 
-fn find_energy(room: &Room) -> Task {
+fn find_energy(room: &Room, energy_capacity: u32) -> TaskQueueEntry {
     // check for energy on the ground of sufficient quantity to care about
     for resource in room.find(find::DROPPED_RESOURCES, None) {
+        let resource_amount = resource.amount();
         if resource.resource_type() == ResourceType::Energy
-            && resource.amount() >= HAULER_ENERGY_PICKUP_THRESHOLD
+            && resource_amount >= HAULER_ENERGY_PICKUP_THRESHOLD
         {
-            return Task::TakeFromResource(resource.id());
+            let reserve_amount = std::cmp::min(resource_amount, energy_capacity);
+            return TaskQueueEntry::new(Task::TakeFromResource(resource.id()), reserve_amount);
         }
     }
 
@@ -75,15 +79,17 @@ fn find_energy(room: &Room) -> Task {
             }
         };
 
-        if store.get_used_capacity(Some(ResourceType::Energy)) >= HAULER_ENERGY_WITHDRAW_THRESHOLD {
-            return Task::TakeFromStructure(structure.as_structure().id(), ResourceType::Energy);
+        let energy_amount = store.get_used_capacity(Some(ResourceType::Energy));
+        if energy_amount >= HAULER_ENERGY_WITHDRAW_THRESHOLD {
+            let reserve_amount = std::cmp::min(energy_amount, energy_capacity);
+            return TaskQueueEntry::new(Task::TakeFromStructure(structure.as_structure().id(), ResourceType::Energy), reserve_amount);
         }
     }
 
-    Task::IdleUntil(game::time() + NO_TASK_IDLE_TICKS)
+    TaskQueueEntry::new_unreserved(Task::IdleUntil(game::time() + NO_TASK_IDLE_TICKS))
 }
 
-fn find_delivery_target(room: &Room) -> Task {
+fn find_delivery_target(room: &Room, energy_amount: u32) -> TaskQueueEntry {
     // check structures - we'll do a pass looking for high priority structures
     // like spawns and extensions and towers before we check terminal and storage -
     // but we'll store their references here as we come accoss them
@@ -113,32 +119,41 @@ fn find_delivery_target(room: &Room) -> Task {
             }
         };
 
-        if store.get_free_capacity(Some(ResourceType::Energy)) > 0 {
-            return Task::DeliverToStructure(structure.as_structure().id(), ResourceType::Energy);
+        let energy_capacity = store.get_free_capacity(Some(ResourceType::Energy)).try_into().unwrap_or(0);
+        if energy_capacity > 0 {
+            let reserve_amount = std::cmp::min(energy_amount, energy_capacity);
+            return TaskQueueEntry::new(Task::DeliverToStructure(structure.as_structure().id(), ResourceType::Energy), reserve_amount);
         }
     }
 
     // check the terminal if we found one
     if let Some(terminal) = maybe_terminal {
-        if terminal
-            .store()
-            .get_used_capacity(Some(ResourceType::Energy))
-            < TERMINAL_ENERGY_TARGET
+        let store = terminal.store();
+        if store.get_used_capacity(Some(ResourceType::Energy)) < TERMINAL_ENERGY_TARGET
         {
-            return Task::DeliverToStructure(
-                terminal.id().into_type::<Structure>(),
-                ResourceType::Energy,
-            );
+            let energy_capacity = store.get_free_capacity(Some(ResourceType::Energy)).try_into().unwrap_or(0);
+            if energy_capacity > 0 {
+                let reserve_amount = std::cmp::min(energy_amount, energy_capacity);
+                return TaskQueueEntry::new(Task::DeliverToStructure(
+                    terminal.id().into_type::<Structure>(),
+                    ResourceType::Energy,
+                ), reserve_amount);
+            }
         }
     }
 
     // and finally check the storage
     if let Some(storage) = maybe_storage {
-        return Task::DeliverToStructure(
-            storage.id().into_type::<Structure>(),
-            ResourceType::Energy,
-        );
+        let store = storage.store();
+        let energy_capacity = store.get_free_capacity(Some(ResourceType::Energy)).try_into().unwrap_or(0);
+        if energy_capacity > 0 {
+            let reserve_amount = std::cmp::min(energy_amount, energy_capacity);
+            return TaskQueueEntry::new(Task::DeliverToStructure(
+                storage.id().into_type::<Structure>(),
+                ResourceType::Energy,
+            ), reserve_amount);
+        }
     }
 
-    Task::IdleUntil(game::time() + NO_TASK_IDLE_TICKS)
+    TaskQueueEntry::new_unreserved(Task::IdleUntil(game::time() + NO_TASK_IDLE_TICKS))
 }
