@@ -103,7 +103,7 @@ pub struct ShardState {
     pub worker_state: HashMap<WorkerId, WorkerState>,
     // shared tasks and the occupancy info that controls whether they're 'saturated'
     // or could be worked by more workers
-    pub reserved_tasks: HashMap<Task, u32>,
+    pub task_reservations: HashMap<Task, u32>,
     // additionally, a HashSet<WorkerRole> where we'll mark which roles
     // we have active workers for, allowing spawns to check which workers to create
     pub worker_roles: HashSet<WorkerRole>,
@@ -115,7 +115,7 @@ impl Default for ShardState {
             global_init_time: game::time(),
             colony_state: HashMap::new(),
             worker_state: HashMap::new(),
-            reserved_tasks: HashMap::new(),
+            task_reservations: HashMap::new(),
             worker_roles: HashSet::new(),
         }
     }

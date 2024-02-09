@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use serde::{Deserialize, Serialize};
 
 use screeps::{
@@ -104,9 +106,15 @@ impl TaskQueueEntry {
         }
     }
 
-    pub fn new(task: Task, reservation_amount: u32) -> TaskQueueEntry {
+    pub fn new(
+        task: Task,
+        reservation_amount: u32,
+        task_reservations: &mut HashMap<Task, u32>,
+    ) -> TaskQueueEntry {
         if reservation_amount > 0 {
-            // add reservation
+            task_reservations
+                .entry(task)
+                .and_modify(|r| *r += reservation_amount);
         }
         TaskQueueEntry {
             task,

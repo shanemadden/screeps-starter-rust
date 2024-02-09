@@ -1,6 +1,6 @@
 use log::*;
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use screeps::{
     constants::{find, Part, ResourceType},
@@ -27,19 +27,29 @@ pub struct Builder {
 }
 
 impl Worker for Builder {
-    fn find_task(&self, store: &Store, _worker_roles: &HashSet<WorkerRole>) -> TaskQueueEntry {
+    fn find_task(
+        &self,
+        store: &Store,
+        _worker_roles: &HashSet<WorkerRole>,
+        task_reservations: &mut HashMap<Task, u32>,
+    ) -> TaskQueueEntry {
         match game::rooms().get(self.home_room) {
             Some(room) => {
                 let energy_amount = store.get_used_capacity(Some(ResourceType::Energy));
                 if energy_amount > 0 {
-                    find_build_or_repair_task(&room, self.repair_watermark, energy_amount)
+                    find_build_or_repair_task(
+                        &room,
+                        self.repair_watermark,
+                        energy_amount,
+                        task_reservations,
+                    )
                 } else {
                     let energy_capacity = store
                         .get_free_capacity(Some(ResourceType::Energy))
                         .try_into()
                         .unwrap_or(0);
                     if energy_capacity > 0 {
-                        find_energy_or_source(&room, energy_capacity)
+                        find_energy_or_source(&room, energy_capacity, task_reservations)
                     } else {
                         warn!("no energy capacity!");
                         TaskQueueEntry::new_unreserved(Task::IdleUntil(u32::MAX))
@@ -63,6 +73,7 @@ fn find_build_or_repair_task(
     room: &Room,
     repair_watermark: u32,
     energy_amount: u32,
+    task_reservations: &mut HashMap<Task, u32>,
 ) -> TaskQueueEntry {
     // look for repair tasks first
     // note that we're using STRUCTURES instead of MY_STRUCTURES
@@ -79,7 +90,11 @@ fn find_build_or_repair_task(
             // if the hits are below our 'watermark' to repair to
             // as well as less than half of this struture's max, repair!
             if hits < repair_watermark && hits * 2 < hits_max {
-                return TaskQueueEntry::new(Task::Repair(structure.id()), energy_amount);
+                return TaskQueueEntry::new(
+                    Task::Repair(structure.id()),
+                    energy_amount,
+                    task_reservations,
+                );
             }
         }
     }
@@ -94,13 +109,18 @@ fn find_build_or_repair_task(
         return TaskQueueEntry::new(
             Task::Build(construction_site.try_id().unwrap()),
             energy_amount,
+            task_reservations,
         );
     }
 
     TaskQueueEntry::new_unreserved(Task::IdleUntil(game::time() + NO_TASK_IDLE_TICKS))
 }
 
-fn find_energy_or_source(room: &Room, energy_capacity: u32) -> TaskQueueEntry {
+fn find_energy_or_source(
+    room: &Room,
+    energy_capacity: u32,
+    task_reservations: &mut HashMap<Task, u32>,
+) -> TaskQueueEntry {
     // check for energy on the ground of sufficient quantity to care about
     for resource in room.find(find::DROPPED_RESOURCES, None) {
         let resource_amount = resource.amount();
@@ -108,7 +128,11 @@ fn find_energy_or_source(room: &Room, energy_capacity: u32) -> TaskQueueEntry {
             && resource_amount >= BUILDER_ENERGY_PICKUP_THRESHOLD
         {
             let reserve_amount = std::cmp::min(resource_amount, energy_capacity);
-            return TaskQueueEntry::new(Task::TakeFromResource(resource.id()), reserve_amount);
+            return TaskQueueEntry::new(
+                Task::TakeFromResource(resource.id()),
+                reserve_amount,
+                task_reservations,
+            );
         }
     }
 
@@ -131,13 +155,18 @@ fn find_energy_or_source(room: &Room, energy_capacity: u32) -> TaskQueueEntry {
             return TaskQueueEntry::new(
                 Task::TakeFromStructure(structure.as_structure().id(), ResourceType::Energy),
                 reserve_amount,
+                task_reservations,
             );
         }
     }
 
     // look for sources with energy we can harvest as a last resort
     if let Some(source) = room.find(find::SOURCES_ACTIVE, None).into_iter().next() {
-        return TaskQueueEntry::new(Task::HarvestEnergyUntilFull(source.id()), 1);
+        return TaskQueueEntry::new(
+            Task::HarvestEnergyUntilFull(source.id()),
+            1,
+            task_reservations,
+        );
     }
 
     TaskQueueEntry::new_unreserved(Task::IdleUntil(game::time() + NO_TASK_IDLE_TICKS))

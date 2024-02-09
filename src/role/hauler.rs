@@ -1,6 +1,6 @@
 use log::*;
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use screeps::{
     constants::{find, Part, ResourceType},
@@ -27,18 +27,23 @@ pub struct Hauler {
 }
 
 impl Worker for Hauler {
-    fn find_task(&self, store: &Store, _worker_roles: &HashSet<WorkerRole>) -> TaskQueueEntry {
+    fn find_task(
+        &self,
+        store: &Store,
+        _worker_roles: &HashSet<WorkerRole>,
+        task_reservations: &mut HashMap<Task, u32>,
+    ) -> TaskQueueEntry {
         match game::rooms().get(self.home_room) {
             Some(room) => {
                 let energy_amount = store.get_used_capacity(Some(ResourceType::Energy));
                 if energy_amount > 0 {
-                    find_delivery_target(&room, energy_amount)
+                    find_delivery_target(&room, energy_amount, task_reservations)
                 } else {
                     let energy_capacity = store
                         .get_free_capacity(Some(ResourceType::Energy))
                         .try_into()
                         .unwrap_or(0);
-                    find_energy(&room, energy_capacity)
+                    find_energy(&room, energy_capacity, task_reservations)
                 }
             }
             None => {
@@ -63,7 +68,11 @@ impl Worker for Hauler {
     }
 }
 
-fn find_energy(room: &Room, energy_capacity: u32) -> TaskQueueEntry {
+fn find_energy(
+    room: &Room,
+    energy_capacity: u32,
+    task_reservations: &mut HashMap<Task, u32>,
+) -> TaskQueueEntry {
     // check for energy on the ground of sufficient quantity to care about
     for resource in room.find(find::DROPPED_RESOURCES, None) {
         let resource_amount = resource.amount();
@@ -71,7 +80,11 @@ fn find_energy(room: &Room, energy_capacity: u32) -> TaskQueueEntry {
             && resource_amount >= HAULER_ENERGY_PICKUP_THRESHOLD
         {
             let reserve_amount = std::cmp::min(resource_amount, energy_capacity);
-            return TaskQueueEntry::new(Task::TakeFromResource(resource.id()), reserve_amount);
+            return TaskQueueEntry::new(
+                Task::TakeFromResource(resource.id()),
+                reserve_amount,
+                task_reservations,
+            );
         }
     }
 
@@ -94,6 +107,7 @@ fn find_energy(room: &Room, energy_capacity: u32) -> TaskQueueEntry {
             return TaskQueueEntry::new(
                 Task::TakeFromStructure(structure.as_structure().id(), ResourceType::Energy),
                 reserve_amount,
+                task_reservations,
             );
         }
     }
@@ -101,7 +115,11 @@ fn find_energy(room: &Room, energy_capacity: u32) -> TaskQueueEntry {
     TaskQueueEntry::new_unreserved(Task::IdleUntil(game::time() + NO_TASK_IDLE_TICKS))
 }
 
-fn find_delivery_target(room: &Room, energy_amount: u32) -> TaskQueueEntry {
+fn find_delivery_target(
+    room: &Room,
+    energy_amount: u32,
+    task_reservations: &mut HashMap<Task, u32>,
+) -> TaskQueueEntry {
     // check structures - we'll do a pass looking for high priority structures
     // like spawns and extensions and towers before we check terminal and storage -
     // but we'll store their references here as we come accoss them
@@ -140,6 +158,7 @@ fn find_delivery_target(room: &Room, energy_amount: u32) -> TaskQueueEntry {
             return TaskQueueEntry::new(
                 Task::DeliverToStructure(structure.as_structure().id(), ResourceType::Energy),
                 reserve_amount,
+                task_reservations,
             );
         }
     }
@@ -160,6 +179,7 @@ fn find_delivery_target(room: &Room, energy_amount: u32) -> TaskQueueEntry {
                         ResourceType::Energy,
                     ),
                     reserve_amount,
+                    task_reservations,
                 );
             }
         }
@@ -180,6 +200,7 @@ fn find_delivery_target(room: &Room, energy_amount: u32) -> TaskQueueEntry {
                     ResourceType::Energy,
                 ),
                 reserve_amount,
+                task_reservations,
             );
         }
     }

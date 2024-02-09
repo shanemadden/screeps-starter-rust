@@ -1,4 +1,4 @@
-use std::collections::{HashSet, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 
 use enum_dispatch::enum_dispatch;
 use log::*;
@@ -84,7 +84,12 @@ impl WorkerReference {
 pub trait Worker {
     /// to be called for the worker when it has no work to do,
     /// so that it can find another task (even if it's just to idle)
-    fn find_task(&self, store: &Store, worker_roles: &HashSet<WorkerRole>) -> TaskQueueEntry;
+    fn find_task(
+        &self,
+        store: &Store,
+        worker_roles: &HashSet<WorkerRole>,
+        task_reservations: &mut HashMap<Task, u32>,
+    ) -> TaskQueueEntry;
 
     /// gets the desired body to spawn a creep for a worker role
     fn get_body_for_creep(&self, spawn: &StructureSpawn) -> Vec<Part>;
@@ -281,9 +286,11 @@ pub fn run_workers(shard_state: &mut ShardState) {
             None => {
                 // no task in queue, let's find one (even if it's just to go idle)
                 // include the worker's store and the worker role hashset
-                let new_task = worker_state
-                    .role
-                    .find_task(&worker_ref.store(), &shard_state.worker_roles);
+                let new_task = worker_state.role.find_task(
+                    &worker_ref.store(),
+                    &shard_state.worker_roles,
+                    &mut shard_state.task_reservations,
+                );
                 // todo I guess find_task needs to pass in the reservations too
                 // then we'll update it below..? how do we include the capacity we're reserving for resource types though
                 // especially when clearing task.. hrm

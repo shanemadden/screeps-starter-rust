@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use screeps::{
     constants::look,
@@ -22,10 +22,19 @@ pub struct SourceHarvester {
 }
 
 impl Worker for SourceHarvester {
-    fn find_task(&self, _store: &Store, _worker_roles: &HashSet<WorkerRole>) -> TaskQueueEntry {
+    fn find_task(
+        &self,
+        _store: &Store,
+        _worker_roles: &HashSet<WorkerRole>,
+        task_reservations: &mut HashMap<Task, u32>,
+    ) -> TaskQueueEntry {
         match self.source_position.look_for(look::SOURCES) {
             Ok(sources) => match sources.first() {
-                Some(source) => TaskQueueEntry::new(Task::HarvestEnergyForever(source.id()), 1),
+                Some(source) => TaskQueueEntry::new(
+                    Task::HarvestEnergyForever(source.id()),
+                    1,
+                    task_reservations,
+                ),
                 None => {
                     TaskQueueEntry::new_unreserved(Task::MoveToPosition(self.source_position, 1))
                 }

@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use screeps::{
     constants::find,
@@ -18,7 +18,12 @@ pub struct Spawn {
 }
 
 impl Worker for Spawn {
-    fn find_task(&self, _store: &Store, worker_roles: &HashSet<WorkerRole>) -> TaskQueueEntry {
+    fn find_task(
+        &self,
+        _store: &Store,
+        worker_roles: &HashSet<WorkerRole>,
+        _task_reservations: &mut HashMap<Task, u32>,
+    ) -> TaskQueueEntry {
         // for each role variant we want a creep occupying, check
         // if a worker exists; if not, that's the creep we'll pick to spawn next
 
