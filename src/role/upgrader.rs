@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 
 use screeps::{
-    constants::{find, Part, ResourceType},
+    constants::{find, Direction, Part, ResourceType, Terrain},
     enums::StructureObject,
     game,
     local::RoomName,
@@ -83,11 +83,10 @@ fn find_energy_or_source(
             && resource_amount >= UPGRADER_ENERGY_PICKUP_THRESHOLD
         {
             let reserve_amount = std::cmp::min(resource_amount, energy_capacity);
-            return TaskQueueEntry::new(
-                Task::TakeFromResource(resource.id()),
-                reserve_amount,
-                task_reservations,
-            );
+            let task = Task::TakeFromResource(resource.id());
+            if *task_reservations.get(&task).unwrap_or(&0) + reserve_amount <= resource_amount {
+                return TaskQueueEntry::new(task, reserve_amount, task_reservations);
+            }
         }
     }
 
@@ -107,21 +106,29 @@ fn find_energy_or_source(
         let energy_amount = store.get_used_capacity(Some(ResourceType::Energy));
         if energy_amount >= UPGRADER_ENERGY_WITHDRAW_THRESHOLD {
             let reserve_amount = std::cmp::min(energy_amount, energy_capacity);
-            return TaskQueueEntry::new(
-                Task::TakeFromStructure(structure.as_structure().id(), ResourceType::Energy),
-                reserve_amount,
-                task_reservations,
-            );
+            let task = Task::TakeFromStructure(structure.as_structure().id(), ResourceType::Energy);
+            if *task_reservations.get(&task).unwrap_or(&0) + reserve_amount <= energy_amount {
+                return TaskQueueEntry::new(task, reserve_amount, task_reservations);
+            }
         }
     }
 
     // look for sources with energy we can harvest as a last resort
-    if let Some(source) = room.find(find::SOURCES_ACTIVE, None).into_iter().next() {
-        return TaskQueueEntry::new(
-            Task::HarvestEnergyUntilFull(source.id()),
-            1,
-            task_reservations,
-        );
+    for source in room.find(find::SOURCES_ACTIVE, None) {
+        let terrain = room.get_terrain();
+        let xy = source.pos().xy();
+        let mut harvest_positions = 0;
+        for direction in enum_iterator::all::<Direction>() {
+            if let Some(check_xy) = xy.checked_add_direction(direction) {
+                if terrain.get(check_xy.x.u8(), check_xy.y.u8()) != Terrain::Wall {
+                    harvest_positions += 1;
+                }
+            }
+        }
+        let task = Task::HarvestEnergyUntilFull(source.id());
+        if *task_reservations.get(&task).unwrap_or(&0) <= harvest_positions {
+            return TaskQueueEntry::new(task, 1, task_reservations);
+        }
     }
 
     TaskQueueEntry::new_unreserved(Task::IdleUntil(game::time() + NO_TASK_IDLE_TICKS))
