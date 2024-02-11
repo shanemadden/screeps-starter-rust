@@ -9,6 +9,7 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 enum_dispatch = "0.3"
+enum-iterator = "1.4"
 fern = "0.6"
 js-sys = "0.3"
 log = "0.4"
