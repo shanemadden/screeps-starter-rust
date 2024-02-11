@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 
 use screeps::{
-    constants::{find, Part, ResourceType, BUILD_POWER, REPAIR_POWER, Direction, Terrain},
+    constants::{find, Direction, Part, ResourceType, Terrain, BUILD_POWER, REPAIR_POWER},
     enums::StructureObject,
     game,
     local::RoomName,
@@ -76,8 +76,7 @@ fn find_build_or_repair_task(
     task_reservations: &mut HashMap<Task, u32>,
 ) -> TaskQueueEntry {
     // look for repair tasks first
-    // note that we're using STRUCTURES instead of MY_STRUCTURES
-    // so we can catch roads, containers, and walls
+    // note that we're using STRUCTURES instead of MY_STRUCTURES so we can catch roads, containers, and walls
     for structure_object in room.find(find::STRUCTURES, None) {
         // we actually don't care what type of structure this is, convert
         // to the generic `Stucture` which has all we want here
@@ -94,11 +93,7 @@ fn find_build_or_repair_task(
                 let amount_needed = (target_max - hits) / REPAIR_POWER;
                 let task = Task::Repair(structure.id());
                 if *task_reservations.get(&task).unwrap_or(&0) < amount_needed {
-                    return TaskQueueEntry::new(
-                        task,
-                        energy_amount,
-                        task_reservations,
-                    );
+                    return TaskQueueEntry::new(task, energy_amount, task_reservations);
                 }
             }
         }
@@ -106,15 +101,12 @@ fn find_build_or_repair_task(
 
     // look for construction tasks next
     for construction_site in room.find(find::MY_CONSTRUCTION_SITES, None) {
-        let amount_needed = (construction_site.progress_total() - construction_site.progress()) / BUILD_POWER;
+        let amount_needed =
+            (construction_site.progress_total() - construction_site.progress()) / BUILD_POWER;
         // we can unwrap this id because we know the room the site is in must be visible
         let task = Task::Build(construction_site.try_id().unwrap());
         if *task_reservations.get(&task).unwrap_or(&0) < amount_needed {
-            return TaskQueueEntry::new(
-                Task::Build(construction_site.try_id().unwrap()),
-                energy_amount,
-                task_reservations,
-            );
+            return TaskQueueEntry::new(task, energy_amount, task_reservations);
         }
     }
 
@@ -135,11 +127,7 @@ fn find_energy_or_source(
             let reserve_amount = std::cmp::min(resource_amount, energy_capacity);
             let task = Task::TakeFromResource(resource.id());
             if *task_reservations.get(&task).unwrap_or(&0) + reserve_amount <= resource_amount {
-                return TaskQueueEntry::new(
-                    task,
-                    reserve_amount,
-                    task_reservations,
-                );
+                return TaskQueueEntry::new(task, reserve_amount, task_reservations);
             }
         }
     }
@@ -162,11 +150,7 @@ fn find_energy_or_source(
             let reserve_amount = std::cmp::min(energy_amount, energy_capacity);
             let task = Task::TakeFromStructure(structure.as_structure().id(), ResourceType::Energy);
             if *task_reservations.get(&task).unwrap_or(&0) + reserve_amount <= energy_amount {
-                return TaskQueueEntry::new(
-                    task,
-                    reserve_amount,
-                    task_reservations,
-                );
+                return TaskQueueEntry::new(task, reserve_amount, task_reservations);
             }
         }
     }
@@ -185,11 +169,7 @@ fn find_energy_or_source(
         }
         let task = Task::HarvestEnergyUntilFull(source.id());
         if *task_reservations.get(&task).unwrap_or(&0) <= harvest_positions {
-            return TaskQueueEntry::new(
-                task,
-                1,
-                task_reservations,
-            );
+            return TaskQueueEntry::new(task, 1, task_reservations);
         }
     }
 
