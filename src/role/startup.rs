@@ -199,7 +199,7 @@ fn find_energy_or_source(
             }
         }
         let task = Task::HarvestEnergyUntilFull(source.id());
-        if *task_reservations.get(&task).unwrap_or(&0) <= harvest_positions {
+        if *task_reservations.get(&task).unwrap_or(&0) < harvest_positions {
             return TaskQueueEntry::new(task, 1, task_reservations);
         }
     }
