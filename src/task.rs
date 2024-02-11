@@ -33,13 +33,6 @@ pub enum TaskResult {
     DestroyWorker,
 }
 
-// #[derive(Eq, PartialEq, Hash, Debug, Copy, Clone, Serialize, Deserialize)]
-// pub enum Task {
-//     Unreserved(TaskTarget),
-//     Simple(TaskTarget, u32),
-//     Logistics(TaskTarget, u32, ResourceType),
-// }
-
 #[derive(Eq, PartialEq, Hash, Debug, Copy, Clone, Serialize, Deserialize)]
 pub enum Task {
     // no reservation
@@ -58,37 +51,6 @@ pub enum Task {
     TakeFromStructure(ObjectId<Structure>, ResourceType),
     DeliverToStructure(ObjectId<Structure>, ResourceType),
 }
-
-// maybe have a function that determines whether each task type 'reserves' its capacity?
-// then it can be taken/dropped as the task is added/removed/cleaned-up-on-death
-// or maybe even have the function return a reservation type? (simple, logistics, logistics with rate of change?)
-
-// or do we just do an enum variant like we 'used to' have?
-
-// just use a u32 for everything
-// #[derive(Clone, Hash, Debug)]
-// pub struct TaskReservation {
-//     //pub workers: Vec<WorkerId>,
-//     pub worker_count_limit: u8,
-//     pub worker_capacity_current: u32,
-//     pub worker_capacity_limit: u32,
-// }
-// how to deal with finding tasks?
-
-// pub enum ReservationType {
-//     // limited by total number of active workers
-//     WorkerCount,
-//     // limited by resource count/capacity
-//     ResourceCapacity,
-// }
-
-// sooooo
-// we need to split this at least a little
-// entry on the creep queue should have the task (plus maybe the target) and an optional
-// size of the reservation if there is one, so if there's a reservation we know to reduce it
-// then the hashmap for tracking hte actual reservation size (or maybe just on the point of interest)
-// .. then I need to figure out whether to split the target off of here. maybe the reservation key should be tuple
-// of task and target?
 
 #[derive(Eq, PartialEq, Hash, Debug, Copy, Clone, Serialize, Deserialize)]
 pub struct TaskQueueEntry {
@@ -124,12 +86,14 @@ impl TaskQueueEntry {
     }
 
     pub fn remove_reservation(&self, task_reservations: &mut HashMap<Task, u32>) {
-        let entry = task_reservations
-            .entry(self.task)
-            .and_modify(|r| *r = r.saturating_sub(self.reservation_amount));
-        if let hash_map::Entry::Occupied(o) = entry {
-            if *o.get() == 0 {
-                o.remove();
+        if self.reservation_amount > 0 {
+            if let hash_map::Entry::Occupied(mut o) = task_reservations.entry(self.task) {
+                // move the above modify logic into here so we dont hash twice
+                *o.get_mut() = o.get().saturating_sub(self.reservation_amount);
+
+                if *o.get() == 0 {
+                    o.remove();
+                }
             }
         }
     }
