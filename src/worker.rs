@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{hash_map::Entry, HashMap, HashSet, VecDeque};
 
 use enum_dispatch::enum_dispatch;
 use log::*;
@@ -277,9 +277,11 @@ pub fn run_workers(shard_state: &mut ShardState) {
                         worker_state.task_queue.push_front(result_task);
                     }
                     TaskResult::CompleteAddTaskToFront(result_task) => {
+                        task.remove_reservation(&mut shard_state.task_reservations);
                         worker_state.task_queue.push_front(result_task);
                     }
                     TaskResult::CompleteAddTaskToBack(result_task) => {
+                        task.remove_reservation(&mut shard_state.task_reservations);
                         worker_state.task_queue.push_back(result_task);
                     }
                     TaskResult::DestroyWorker => {
@@ -315,9 +317,11 @@ pub fn run_workers(shard_state: &mut ShardState) {
                     }
                     TaskResult::CompleteAddTaskToFront(result_task) => {
                         worker_state.task_queue.push_front(result_task);
+                        new_task.remove_reservation(&mut shard_state.task_reservations);
                     }
                     TaskResult::CompleteAddTaskToBack(result_task) => {
                         worker_state.task_queue.push_back(result_task);
+                        new_task.remove_reservation(&mut shard_state.task_reservations);
                     }
                     TaskResult::DestroyWorker => {
                         remove_worker_ids.push(*worker_id);
@@ -330,7 +334,13 @@ pub fn run_workers(shard_state: &mut ShardState) {
 
     for id in remove_worker_ids {
         // todo remove reservations!
-        shard_state.worker_state.remove(&id);
+        if let Entry::Occupied(o) = shard_state.worker_state.entry(id) {
+            for task in &o.get().task_queue {
+                task.remove_reservation(&mut shard_state.task_reservations);
+            }
+
+            o.remove_entry();
+        }
     }
 
     for role in remove_worker_roles {
