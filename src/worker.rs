@@ -257,10 +257,6 @@ pub fn run_workers(shard_state: &mut ShardState) {
             Some(task) => {
                 // we've got a task, run it!
                 match task.run_task(worker_ref, movement_profile) {
-                    // nothing to do if complete, already popped
-                    // TODO now we actually need to knock them out of the task reservations from here!
-                    // then also check the reservations in the task finders
-                    // also don't forget to reserve on the way out of the serialized task queue
                     TaskResult::Complete => {
                         task.remove_reservation(&mut shard_state.task_reservations);
                     }
@@ -285,6 +281,7 @@ pub fn run_workers(shard_state: &mut ShardState) {
                         worker_state.task_queue.push_back(result_task);
                     }
                     TaskResult::DestroyWorker => {
+                        task.remove_reservation(&mut shard_state.task_reservations);
                         remove_worker_ids.push(*worker_id);
                         remove_worker_roles.push(worker_state.role);
                     }
@@ -324,6 +321,7 @@ pub fn run_workers(shard_state: &mut ShardState) {
                         new_task.remove_reservation(&mut shard_state.task_reservations);
                     }
                     TaskResult::DestroyWorker => {
+                        new_task.remove_reservation(&mut shard_state.task_reservations);
                         remove_worker_ids.push(*worker_id);
                         remove_worker_roles.push(worker_state.role);
                     }
@@ -333,7 +331,6 @@ pub fn run_workers(shard_state: &mut ShardState) {
     }
 
     for id in remove_worker_ids {
-        // todo remove reservations!
         if let Entry::Occupied(o) = shard_state.worker_state.entry(id) {
             for task in &o.get().task_queue {
                 task.remove_reservation(&mut shard_state.task_reservations);
