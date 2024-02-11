@@ -43,7 +43,14 @@ impl Worker for Hauler {
                         .get_free_capacity(Some(ResourceType::Energy))
                         .try_into()
                         .unwrap_or(0);
-                    find_energy(&room, energy_capacity, task_reservations)
+                    if energy_capacity > 0 {
+                        find_energy(&room, energy_capacity, task_reservations)
+                    } else {
+                        warn!("no energy capacity! hurt?");
+                        TaskQueueEntry::new_unreserved(Task::IdleUntil(
+                            game::time() + NO_TASK_IDLE_TICKS,
+                        ))
+                    }
                 }
             }
             None => {
@@ -80,11 +87,10 @@ fn find_energy(
             && resource_amount >= HAULER_ENERGY_PICKUP_THRESHOLD
         {
             let reserve_amount = std::cmp::min(resource_amount, energy_capacity);
-            return TaskQueueEntry::new(
-                Task::TakeFromResource(resource.id()),
-                reserve_amount,
-                task_reservations,
-            );
+            let task = Task::TakeFromResource(resource.id());
+            if *task_reservations.get(&task).unwrap_or(&0) + reserve_amount <= resource_amount {
+                return TaskQueueEntry::new(task, reserve_amount, task_reservations);
+            }
         }
     }
 
@@ -104,11 +110,10 @@ fn find_energy(
         let energy_amount = store.get_used_capacity(Some(ResourceType::Energy));
         if energy_amount >= HAULER_ENERGY_WITHDRAW_THRESHOLD {
             let reserve_amount = std::cmp::min(energy_amount, energy_capacity);
-            return TaskQueueEntry::new(
-                Task::TakeFromStructure(structure.as_structure().id(), ResourceType::Energy),
-                reserve_amount,
-                task_reservations,
-            );
+            let task = Task::TakeFromStructure(structure.as_structure().id(), ResourceType::Energy);
+            if *task_reservations.get(&task).unwrap_or(&0) + reserve_amount <= energy_amount {
+                return TaskQueueEntry::new(task, reserve_amount, task_reservations);
+            }
         }
     }
 
@@ -155,11 +160,12 @@ fn find_delivery_target(
             .unwrap_or(0);
         if energy_capacity > 0 {
             let reserve_amount = std::cmp::min(energy_amount, energy_capacity);
-            return TaskQueueEntry::new(
-                Task::DeliverToStructure(structure.as_structure().id(), ResourceType::Energy),
-                reserve_amount,
-                task_reservations,
-            );
+            let task =
+                Task::DeliverToStructure(structure.as_structure().id(), ResourceType::Energy);
+            // if it's not already got enough energy on the way, take the job even if we'll overfill
+            if *task_reservations.get(&task).unwrap_or(&0) < energy_capacity {
+                return TaskQueueEntry::new(task, reserve_amount, task_reservations);
+            }
         }
     }
 
@@ -173,14 +179,13 @@ fn find_delivery_target(
                 .unwrap_or(0);
             if energy_capacity > 0 {
                 let reserve_amount = std::cmp::min(energy_amount, energy_capacity);
-                return TaskQueueEntry::new(
-                    Task::DeliverToStructure(
-                        terminal.id().into_type::<Structure>(),
-                        ResourceType::Energy,
-                    ),
-                    reserve_amount,
-                    task_reservations,
+                let task = Task::DeliverToStructure(
+                    terminal.id().into_type::<Structure>(),
+                    ResourceType::Energy,
                 );
+                if *task_reservations.get(&task).unwrap_or(&0) + reserve_amount <= energy_capacity {
+                    return TaskQueueEntry::new(task, reserve_amount, task_reservations);
+                }
             }
         }
     }
@@ -194,14 +199,13 @@ fn find_delivery_target(
             .unwrap_or(0);
         if energy_capacity > 0 {
             let reserve_amount = std::cmp::min(energy_amount, energy_capacity);
-            return TaskQueueEntry::new(
-                Task::DeliverToStructure(
-                    storage.id().into_type::<Structure>(),
-                    ResourceType::Energy,
-                ),
-                reserve_amount,
-                task_reservations,
+            let task = Task::DeliverToStructure(
+                storage.id().into_type::<Structure>(),
+                ResourceType::Energy,
             );
+            if *task_reservations.get(&task).unwrap_or(&0) + reserve_amount <= energy_capacity {
+                return TaskQueueEntry::new(task, reserve_amount, task_reservations);
+            }
         }
     }
 

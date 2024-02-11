@@ -51,8 +51,10 @@ impl Worker for Builder {
                     if energy_capacity > 0 {
                         find_energy_or_source(&room, energy_capacity, task_reservations)
                     } else {
-                        warn!("no energy capacity!");
-                        TaskQueueEntry::new_unreserved(Task::IdleUntil(u32::MAX))
+                        warn!("no energy capacity! hurt?");
+                        TaskQueueEntry::new_unreserved(Task::IdleUntil(
+                            game::time() + NO_TASK_IDLE_TICKS,
+                        ))
                     }
                 }
             }
