@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 
 use screeps::{
-    constants::{find, Part, ResourceType},
+    constants::{find, Direction, Part, ResourceType, Terrain, BUILD_POWER, REPAIR_POWER},
     enums::StructureObject,
     game,
     local::RoomName,
@@ -88,11 +88,12 @@ fn find_startup_task(
             .unwrap_or(0);
         if energy_capacity > 0 {
             let reserve_amount = std::cmp::min(energy_amount, energy_capacity);
-            return TaskQueueEntry::new(
-                Task::DeliverToStructure(structure.as_structure().id(), ResourceType::Energy),
-                reserve_amount,
-                task_reservations,
-            );
+            let task =
+                Task::DeliverToStructure(structure.as_structure().id(), ResourceType::Energy);
+            // if it's not already got enough energy on the way, take the job even if we'll overfill
+            if *task_reservations.get(&task).unwrap_or(&0) < energy_capacity {
+                return TaskQueueEntry::new(task, reserve_amount, task_reservations);
+            }
         }
     }
 
@@ -110,33 +111,34 @@ fn find_startup_task(
         if hits_max != 0 {
             // if the hits are below our 'watermark' to repair to
             // as well as less than half of this struture's max, repair!
-            if hits < 10_000 && hits * 2 < hits_max {
-                return TaskQueueEntry::new(
-                    Task::Repair(structure.id()),
-                    energy_amount,
-                    task_reservations,
-                );
+            if hits < REPAIR_WATERMARK_RCL_1 && hits * 2 < hits_max {
+                let target_max = std::cmp::min(REPAIR_WATERMARK_RCL_1, hits_max);
+                let amount_needed = (target_max - hits) / REPAIR_POWER;
+                let task = Task::Repair(structure.id());
+                if *task_reservations.get(&task).unwrap_or(&0) < amount_needed {
+                    return TaskQueueEntry::new(task, energy_amount, task_reservations);
+                }
             }
         }
     }
 
     // look for construction tasks next
-    if let Some(construction_site) = room
-        .find(find::MY_CONSTRUCTION_SITES, None)
-        .into_iter()
-        .next()
-    {
+    for construction_site in room.find(find::MY_CONSTRUCTION_SITES, None) {
+        let amount_needed =
+            (construction_site.progress_total() - construction_site.progress()) / BUILD_POWER;
         // we can unwrap this id because we know the room the site is in must be visible
-        return TaskQueueEntry::new(
-            Task::Build(construction_site.try_id().unwrap()),
-            energy_amount,
-            task_reservations,
-        );
+        let task = Task::Build(construction_site.try_id().unwrap());
+        if *task_reservations.get(&task).unwrap_or(&0) < amount_needed {
+            return TaskQueueEntry::new(task, energy_amount, task_reservations);
+        }
     }
 
     // finally, upgrade
     if let Some(controller) = room.controller() {
-        return TaskQueueEntry::new(Task::Upgrade(controller.id()), 1, task_reservations);
+        let task = Task::Upgrade(controller.id());
+        if *task_reservations.get(&task).unwrap_or(&0) < STARTUP_UPGRADE_MAX {
+            return TaskQueueEntry::new(task, 1, task_reservations);
+        }
     }
 
     TaskQueueEntry::new_unreserved(Task::IdleUntil(game::time() + NO_TASK_IDLE_TICKS))
@@ -154,11 +156,10 @@ fn find_energy_or_source(
             && resource_amount >= BUILDER_ENERGY_PICKUP_THRESHOLD
         {
             let reserve_amount = std::cmp::min(resource_amount, energy_capacity);
-            return TaskQueueEntry::new(
-                Task::TakeFromResource(resource.id()),
-                reserve_amount,
-                task_reservations,
-            );
+            let task = Task::TakeFromResource(resource.id());
+            if *task_reservations.get(&task).unwrap_or(&0) + reserve_amount <= resource_amount {
+                return TaskQueueEntry::new(task, reserve_amount, task_reservations);
+            }
         }
     }
 
@@ -178,21 +179,29 @@ fn find_energy_or_source(
         let energy_amount = store.get_used_capacity(Some(ResourceType::Energy));
         if energy_amount >= BUILDER_ENERGY_WITHDRAW_THRESHOLD {
             let reserve_amount = std::cmp::min(energy_amount, energy_capacity);
-            return TaskQueueEntry::new(
-                Task::TakeFromStructure(structure.as_structure().id(), ResourceType::Energy),
-                reserve_amount,
-                task_reservations,
-            );
+            let task = Task::TakeFromStructure(structure.as_structure().id(), ResourceType::Energy);
+            if *task_reservations.get(&task).unwrap_or(&0) + reserve_amount <= energy_amount {
+                return TaskQueueEntry::new(task, reserve_amount, task_reservations);
+            }
         }
     }
 
     // look for sources with energy we can harvest as a last resort
-    if let Some(source) = room.find(find::SOURCES_ACTIVE, None).into_iter().next() {
-        return TaskQueueEntry::new(
-            Task::HarvestEnergyUntilFull(source.id()),
-            1,
-            task_reservations,
-        );
+    for source in room.find(find::SOURCES_ACTIVE, None) {
+        let terrain = room.get_terrain();
+        let xy = source.pos().xy();
+        let mut harvest_positions = 0;
+        for direction in enum_iterator::all::<Direction>() {
+            if let Some(check_xy) = xy.checked_add_direction(direction) {
+                if terrain.get(check_xy.x.u8(), check_xy.y.u8()) != Terrain::Wall {
+                    harvest_positions += 1;
+                }
+            }
+        }
+        let task = Task::HarvestEnergyUntilFull(source.id());
+        if *task_reservations.get(&task).unwrap_or(&0) <= harvest_positions {
+            return TaskQueueEntry::new(task, 1, task_reservations);
+        }
     }
 
     TaskQueueEntry::new_unreserved(Task::IdleUntil(game::time() + NO_TASK_IDLE_TICKS))
