@@ -1,4 +1,4 @@
-use std::collections::{HashSet, VecDeque};
+use std::collections::{hash_map::Entry, HashMap, HashSet, VecDeque};
 
 use enum_dispatch::enum_dispatch;
 use log::*;
@@ -15,7 +15,7 @@ use screeps::{
 use crate::{
     movement::{MovementGoal, MovementProfile, PathState},
     role::*,
-    task::{Task, TaskResult},
+    task::{Task, TaskQueueEntry, TaskResult},
     ShardState,
 };
 
@@ -84,7 +84,12 @@ impl WorkerReference {
 pub trait Worker {
     /// to be called for the worker when it has no work to do,
     /// so that it can find another task (even if it's just to idle)
-    fn find_task(&self, store: &Store, worker_roles: &HashSet<WorkerRole>) -> Task;
+    fn find_task(
+        &self,
+        store: &Store,
+        worker_roles: &HashSet<WorkerRole>,
+        task_reservations: &mut HashMap<Task, u32>,
+    ) -> TaskQueueEntry;
 
     /// gets the desired body to spawn a creep for a worker role
     fn get_body_for_creep(&self, spawn: &StructureSpawn) -> Vec<Part>;
@@ -103,7 +108,7 @@ pub trait Worker {
 #[derive(Debug, Clone)]
 pub struct WorkerState {
     pub role: WorkerRole,
-    pub task_queue: VecDeque<Task>,
+    pub task_queue: VecDeque<TaskQueueEntry>,
     pub worker_reference: Option<WorkerReference>,
     pub movement_goal: Option<MovementGoal>,
     pub path_state: Option<PathState>,
@@ -113,7 +118,7 @@ impl WorkerState {
     pub fn new_with_role_and_reference(
         role: WorkerRole,
         worker_reference: WorkerReference,
-        task_queue: VecDeque<Task>,
+        task_queue: VecDeque<TaskQueueEntry>,
     ) -> WorkerState {
         WorkerState {
             role,
@@ -143,12 +148,12 @@ pub fn scan_and_register_creeps(shard_state: &mut ShardState) {
                 worker_state.worker_reference = Some(WorkerReference::Creep(creep.clone()))
             })
             .or_insert_with(|| {
-                let creep_name: String = creep.name().into();
+                let creep_name: String = creep.name();
                 match serde_json::from_str(&creep_name) {
                     Ok(role) => {
                         let task_queue = if creep.spawning() {
                             let mut queue = VecDeque::new();
-                            queue.push_front(Task::WaitToSpawn);
+                            queue.push_front(TaskQueueEntry::new_unreserved(Task::WaitToSpawn));
                             queue
                         } else {
                             VecDeque::new()
@@ -252,8 +257,9 @@ pub fn run_workers(shard_state: &mut ShardState) {
             Some(task) => {
                 // we've got a task, run it!
                 match task.run_task(worker_ref, movement_profile) {
-                    // nothing to do if complete, already popped
-                    TaskResult::Complete => {}
+                    TaskResult::Complete => {
+                        task.remove_reservation(&mut shard_state.task_reservations);
+                    }
                     TaskResult::StillWorking => {
                         worker_state.task_queue.push_front(task);
                     }
@@ -267,12 +273,15 @@ pub fn run_workers(shard_state: &mut ShardState) {
                         worker_state.task_queue.push_front(result_task);
                     }
                     TaskResult::CompleteAddTaskToFront(result_task) => {
+                        task.remove_reservation(&mut shard_state.task_reservations);
                         worker_state.task_queue.push_front(result_task);
                     }
                     TaskResult::CompleteAddTaskToBack(result_task) => {
+                        task.remove_reservation(&mut shard_state.task_reservations);
                         worker_state.task_queue.push_back(result_task);
                     }
                     TaskResult::DestroyWorker => {
+                        task.remove_reservation(&mut shard_state.task_reservations);
                         remove_worker_ids.push(*worker_id);
                         remove_worker_roles.push(worker_state.role);
                     }
@@ -281,12 +290,15 @@ pub fn run_workers(shard_state: &mut ShardState) {
             None => {
                 // no task in queue, let's find one (even if it's just to go idle)
                 // include the worker's store and the worker role hashset
-                let new_task = worker_state
-                    .role
-                    .find_task(&worker_ref.store(), &shard_state.worker_roles);
+                let new_task = worker_state.role.find_task(
+                    &worker_ref.store(),
+                    &shard_state.worker_roles,
+                    &mut shard_state.task_reservations,
+                );
                 match new_task.run_task(worker_ref, movement_profile) {
                     TaskResult::Complete => {
-                        warn!("instantly completed new task, unexpected: {:?}", new_task)
+                        warn!("instantly completed new task, unexpected: {:?}", new_task);
+                        new_task.remove_reservation(&mut shard_state.task_reservations);
                     }
                     TaskResult::StillWorking => {
                         worker_state.task_queue.push_front(new_task);
@@ -302,11 +314,14 @@ pub fn run_workers(shard_state: &mut ShardState) {
                     }
                     TaskResult::CompleteAddTaskToFront(result_task) => {
                         worker_state.task_queue.push_front(result_task);
+                        new_task.remove_reservation(&mut shard_state.task_reservations);
                     }
                     TaskResult::CompleteAddTaskToBack(result_task) => {
                         worker_state.task_queue.push_back(result_task);
+                        new_task.remove_reservation(&mut shard_state.task_reservations);
                     }
                     TaskResult::DestroyWorker => {
+                        new_task.remove_reservation(&mut shard_state.task_reservations);
                         remove_worker_ids.push(*worker_id);
                         remove_worker_roles.push(worker_state.role);
                     }
@@ -316,7 +331,13 @@ pub fn run_workers(shard_state: &mut ShardState) {
     }
 
     for id in remove_worker_ids {
-        shard_state.worker_state.remove(&id);
+        if let Entry::Occupied(o) = shard_state.worker_state.entry(id) {
+            for task in &o.get().task_queue {
+                task.remove_reservation(&mut shard_state.task_reservations);
+            }
+
+            o.remove_entry();
+        }
     }
 
     for role in remove_worker_roles {

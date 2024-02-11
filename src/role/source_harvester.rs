@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use screeps::{
     constants::look,
@@ -9,7 +9,11 @@ use screeps::{
     prelude::*,
 };
 
-use crate::{role::WorkerRole, task::Task, worker::Worker};
+use crate::{
+    role::WorkerRole,
+    task::{Task, TaskQueueEntry},
+    worker::Worker,
+};
 
 #[derive(Eq, PartialEq, Hash, Debug, Copy, Clone, Serialize, Deserialize)]
 pub struct SourceHarvester {
@@ -18,13 +22,24 @@ pub struct SourceHarvester {
 }
 
 impl Worker for SourceHarvester {
-    fn find_task(&self, _store: &Store, _worker_roles: &HashSet<WorkerRole>) -> Task {
+    fn find_task(
+        &self,
+        _store: &Store,
+        _worker_roles: &HashSet<WorkerRole>,
+        task_reservations: &mut HashMap<Task, u32>,
+    ) -> TaskQueueEntry {
         match self.source_position.look_for(look::SOURCES) {
             Ok(sources) => match sources.first() {
-                Some(source) => Task::HarvestEnergyForever(source.id()),
-                None => Task::MoveToPosition(self.source_position, 1),
+                Some(source) => TaskQueueEntry::new(
+                    Task::HarvestEnergyForever(source.id()),
+                    1,
+                    task_reservations,
+                ),
+                None => {
+                    TaskQueueEntry::new_unreserved(Task::MoveToPosition(self.source_position, 1))
+                }
             },
-            Err(_) => Task::MoveToPosition(self.source_position, 1),
+            Err(_) => TaskQueueEntry::new_unreserved(Task::MoveToPosition(self.source_position, 1)),
         }
     }
 

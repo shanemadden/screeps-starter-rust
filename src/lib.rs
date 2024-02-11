@@ -15,7 +15,7 @@ mod worker;
 
 use self::{
     role::WorkerRole,
-    task::Task,
+    task::{Task, TaskQueueEntry},
     worker::{WorkerId, WorkerState},
 };
 
@@ -69,7 +69,9 @@ mod constants {
     /// Builder role repair maximum at RCL8
     pub const REPAIR_WATERMARK_RCL_8: u32 = 3_000_000;
     /// How many do-it-all creeps to keep alive at RCL 1
-    pub const STARTUP_RCL1_COUNT_TARGET: u8 = 15;
+    pub const STARTUP_RCL1_COUNT_TARGET: u8 = 8;
+    /// How many do-it-all creeps can upgrade
+    pub const STARTUP_UPGRADE_MAX: u32 = 15;
     /// How many upgraders to try to keep alive in each room
     pub const UPGRADER_COUNT_TARGET: u8 = 4;
     /// Builder role considers energy on the groundfor grabbing above this amount
@@ -101,6 +103,9 @@ pub struct ShardState {
     pub colony_state: HashMap<RoomName, ColonyState>,
     // workers and their task queues (includes creeps as well as structures)
     pub worker_state: HashMap<WorkerId, WorkerState>,
+    // shared tasks and the occupancy info that controls whether they're 'saturated'
+    // or could be worked by more workers
+    pub task_reservations: HashMap<Task, u32>,
     // additionally, a HashSet<WorkerRole> where we'll mark which roles
     // we have active workers for, allowing spawns to check which workers to create
     pub worker_roles: HashSet<WorkerRole>,
@@ -112,6 +117,7 @@ impl Default for ShardState {
             global_init_time: game::time(),
             colony_state: HashMap::new(),
             worker_state: HashMap::new(),
+            task_reservations: HashMap::new(),
             worker_roles: HashSet::new(),
         }
     }
@@ -151,7 +157,11 @@ pub fn right_click_position(
         shard_state
             .worker_state
             .entry(WorkerId::Creep(id_raw.into()))
-            .and_modify(|state| state.task_queue.push_front(Task::MoveToPosition(pos, 0)));
+            .and_modify(|state| {
+                state
+                    .task_queue
+                    .push_front(TaskQueueEntry::new_unreserved(Task::MoveToPosition(pos, 0)))
+            });
     }
 }
 
